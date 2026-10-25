@@ -3,8 +3,7 @@ package com.whale.pet
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.res.ColorStateList
-import android.graphics.Color
-import android.graphics.Typeface
+import android.graphics.Rect
 import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
@@ -13,7 +12,6 @@ import android.provider.OpenableColumns
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
-import android.widget.Button
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -26,6 +24,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.widget.doAfterTextChanged
 import java.io.File
@@ -48,7 +48,8 @@ class SettingsActivity : AppCompatActivity() {
     @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
+        // 与聊天页一致：不依赖 adjustResize，改用 insets 自适应键盘高度
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Palette.bgTop
         window.navigationBarColor = Palette.bgBottom
         WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -73,6 +74,31 @@ class SettingsActivity : AppCompatActivity() {
         }
         scroll.addView(content)
         root.addView(scroll, FrameLayout.LayoutParams(-1, -1))
+
+        // 键盘弹起时给滚动区留出底部空间，并把正在输入的控件滚到可见区域
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            scroll.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
+            if (ime.bottom > 0) {
+                val focused = currentFocus
+                if (focused != null && focused !== scroll && focused !== root) {
+                    scroll.post {
+                        // 用内容坐标手动计算滚动距离，避免嵌套子 View 调用
+                        // requestChildRectangleOnScreen 时坐标偏移错误导致整页跳到顶部
+                        val rect = Rect()
+                        focused.getDrawingRect(rect)
+                        content.offsetDescendantRectToMyCoords(focused, rect)
+                        val visibleBottom = scroll.height - scroll.paddingBottom
+                        val delta = rect.bottom + dp(56) - (scroll.scrollY + visibleBottom)
+                        if (delta > 0) scroll.smoothScrollBy(0, delta)
+                    }
+                }
+            }
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
+
         setContentView(root)
         rebuildContent()
     }

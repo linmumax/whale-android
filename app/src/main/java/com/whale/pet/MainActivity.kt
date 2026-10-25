@@ -24,12 +24,21 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 class MainActivity : AppCompatActivity() {
     private val dp = { v: Int -> (v * resources.displayMetrics.density).toInt() }
     private val main = Handler(Looper.getMainLooper())
     private lateinit var root: FrameLayout
+    private var scrollRef: ScrollView? = null
+    // 记住系统栏/键盘留出的边距，页面重建时直接复用，避免内容被状态栏或导航栏遮挡
+    private var insetLeft = 0
+    private var insetTop = 0
+    private var insetRight = 0
+    private var insetBottom = 0
     private var selectedPetId: String? = null
     private var pendingStart = false
 
@@ -38,7 +47,7 @@ class MainActivity : AppCompatActivity() {
     @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, true)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Palette.bgTop
         window.navigationBarColor = Palette.bgBottom
         WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -50,6 +59,17 @@ class MainActivity : AppCompatActivity() {
         NotificationHelper.ensureChannels(this)
         root = FrameLayout(this)
         setContentView(root)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            insetLeft = bars.left
+            insetTop = bars.top
+            insetRight = bars.right
+            insetBottom = maxOf(bars.bottom, ime.bottom)
+            scrollRef?.setPadding(insetLeft, insetTop, insetRight, insetBottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
         render()
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
@@ -77,7 +97,9 @@ class MainActivity : AppCompatActivity() {
         val scroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
             clipToPadding = false
+            setPadding(insetLeft, insetTop, insetRight, insetBottom)
         }
+        scrollRef = scroll
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(12), dp(20), dp(24))

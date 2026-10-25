@@ -10,7 +10,6 @@ import android.view.View
 import android.view.Window
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
@@ -19,8 +18,9 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
 /** 与桌宠聊天：本地人格即时可用，配了 API Key 则自动走 AI。 */
@@ -42,7 +42,9 @@ class ChatActivity : AppCompatActivity() {
     @Suppress("DEPRECATION")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        WindowCompat.setDecorFitsSystemWindows(window, true)
+        // targetSdk 35 在 Android 15+ 会强制边到边，adjustResize 不再缩小窗口，
+        // 这里统一交给 WindowInsets 处理，键盘弹出的高度直接加到内容底部。
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Palette.bgTop
         window.navigationBarColor = Palette.bgBottom
         WindowInsetsControllerCompat(window, window.decorView).apply {
@@ -206,6 +208,16 @@ class ChatActivity : AppCompatActivity() {
         }
         inputBar.addView(send, LinearLayout.LayoutParams(-2, dp(44)).apply { leftMargin = dp(9) })
         column.addView(inputBar)
+
+        // 键盘弹出时把输入栏整体顶到键盘上方，并保持消息列表贴底
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            column.setPadding(bars.left, bars.top, bars.right, maxOf(bars.bottom, ime.bottom))
+            if (ime.bottom > 0) scrollToBottom()
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
 
         setContentView(root)
     }
@@ -401,11 +413,6 @@ class ChatActivity : AppCompatActivity() {
                 addPetMessage("刚才聊的都忘掉啦…不过我还在这里。", "深度睡眠")
             }
             .show()
-    }
-
-    private fun hideKeyboard() {
-        val imm = ContextCompat.getSystemService(this, InputMethodManager::class.java)
-        imm?.hideSoftInputFromWindow(input.windowToken, 0)
     }
 
     override fun onStop() {

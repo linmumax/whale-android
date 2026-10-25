@@ -11,8 +11,8 @@ android {
         applicationId = "com.whale.pet"
         minSdk = 33
         targetSdk = 35
-        versionCode = 26
-        versionName = "1.0.16"
+        versionCode = 27
+        versionName = "1.0.17"
     }
 
     buildTypes {
