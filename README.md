@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | 形态 | DSH 插件（浏览器内 + Electron 桌面小窗） | 独立 Android App |
 | 安装 | `dsh plugin add` / 应用内插件管理 | 侧载 APK |
-| 菜单 | 右键菜单 | 长按 / 双击宠物弹出底部面板 |
+| 菜单 | 右键菜单 | 长按宠物弹出底部面板 |
 | 配置 | `main-config.jsonc` 文件 | SharedPreferences + JSON（`ConfigStore` 单例） |
 | 渲染 | DOM 元素 + WebM | 每个宠物一个悬浮窗 + WebView 播放 WebM |
 | 物理 | 纯函数物理（`shared/physics.ts`） | Kotlin + `Choreographer` 逐帧积分（弹簧拖拽、抛掷、挤压回弹） |
