@@ -1,0 +1,24 @@
+# Android Studio / Gradle
+*.iml
+.gradle/
+.kotlin/
+.idea/
+build/
+/captures
+local.properties
+*.apk
+*.aab
+*.jks
+*.keystore
+
+# 签名与密钥类文件（API Key 请只填在应用设置里，不要提交）
+secrets.properties
+keystore.properties
+
+# 开发时留下的临时截图 / dump
+tmp_*
+*.log
+
+# 系统
+.DS_Store
+Thumbs.db

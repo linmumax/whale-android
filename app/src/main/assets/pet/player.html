@@ -1,0 +1,238 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<style>
+  html, body {
+    margin: 0; padding: 0; width: 100%; height: 100%;
+    background: transparent; overflow: hidden;
+  }
+  #stage { position: fixed; inset: 0; background: transparent; }
+  video {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: contain; background: transparent;
+    opacity: 0;
+    pointer-events: none;
+  }
+  video.front { opacity: 1; }
+  /* 冻结帧：切换动作时垫在新视频下面，避免解码出第一帧前露出黑底/“准备画面”。
+     不做 display 切换，避免 canvas 图层反复创建时白闪；只淡出淡入。 */
+  #snap {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    opacity: 0; transition: opacity 120ms linear;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="snap"></canvas>
+  <video id="v0" playsinline muted preload="auto" disablepictureinpicture></video>
+  <video id="v1" playsinline muted preload="auto" disablepictureinpicture></video>
+</div>
+<script>
+(function () {
+  var vids = [document.getElementById('v0'), document.getElementById('v1')];
+  var snap = document.getElementById('snap');
+  var snapCtx = snap.getContext('2d');
+  var front = -1;
+  var token = 0;
+  var currentName = null;
+  var paused = false;
+  var snapHideTimer = null;
+
+  function call(method, a, b) {
+    try {
+      if (!window.petBridge || !window.petBridge[method]) return;
+      if (arguments.length >= 3) window.petBridge[method](a, b);
+      else window.petBridge[method](a);
+    } catch (e) {}
+  }
+
+  function urlFor(name, custom) {
+    if (custom) return 'https://pet.local/custom/' + encodeURIComponent(name);
+    return 'file:///android_asset/pet/' + encodeURIComponent(name) + '.webm';
+  }
+
+  function syncSnapSize() {
+    var dpr = window.devicePixelRatio || 1;
+    var w = snap.clientWidth || 1;
+    var h = snap.clientHeight || 1;
+    if (snap.width !== Math.round(w * dpr) || snap.height !== Math.round(h * dpr)) {
+      snap.width = Math.round(w * dpr);
+      snap.height = Math.round(h * dpr);
+    }
+  }
+
+  // 定格当前画面：切换动作时先把它垫在下面，等新视频第一帧就绪再淡入
+  function freeze(video) {
+    if (!video || video.readyState < 2 || !video.videoWidth) return false;
+    syncSnapSize();
+    var w = snap.clientWidth || 1;
+    var h = snap.clientHeight || 1;
+    var dpr = window.devicePixelRatio || 1;
+    snapCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    snapCtx.clearRect(0, 0, w, h);
+    var vw = video.videoWidth;
+    var vh = video.videoHeight;
+    var s = Math.min(w / vw, h / vh);
+    var dw = vw * s;
+    var dh = vh * s;
+    try {
+      snapCtx.drawImage(video, (w - dw) / 2, (h - dh) / 2, dw, dh);
+    } catch (e) {
+      return false;
+    }
+    if (snapHideTimer) { clearTimeout(snapHideTimer); snapHideTimer = null; }
+    snap.style.transition = 'none';
+    snap.style.opacity = '1';
+    // 强制一次样式计算，保证随后的淡出过渡生效
+    void snap.offsetWidth;
+    snap.style.transition = 'opacity 120ms linear';
+    return true;
+  }
+
+  function dropSnap() {
+    snap.style.opacity = '0';
+    if (snapHideTimer) clearTimeout(snapHideTimer);
+    // 保留 canvas 图层只清内容，避免下次显示时图层重建造成一帧白闪
+    snapHideTimer = setTimeout(function () {
+      snapHideTimer = null;
+      snapCtx.setTransform(1, 0, 0, 1, 0, 0);
+      snapCtx.clearRect(0, 0, snap.width, snap.height);
+    }, 160);
+  }
+
+  // once=true 只播一遍并回调 onEnded；once=false 循环播放（拖拽等）
+  window.petPlay = function (name, once, custom) {
+    var idx = front === 0 ? 1 : 0;
+    var back = vids[idx];
+
+    // 同一支循环动画（拖拽）继续播，不重新加载，避开无意义的换源闪烁
+    if (!once && front >= 0 && vids[front].dataset.anim === name) {
+      if (vids[front].paused && !paused) {
+        var rp = vids[front].play();
+        if (rp && rp.catch) rp.catch(function () {});
+      }
+      currentName = name;
+      return;
+    }
+
+    var my = ++token;
+    currentName = name;
+
+    // 先把旧画面定格，旧视频立刻隐藏：暂停后它的硬件层可能被清成灰白，
+    // 若还留着做淡出，就会在新视频就绪前闪一下灰白色。
+    var oldFront = front >= 0 ? vids[front] : null;
+    if (oldFront && oldFront !== back) {
+      freeze(oldFront);
+      oldFront.onended = null;
+      oldFront.onerror = null;
+      oldFront.classList.remove('front');
+      oldFront.style.zIndex = '1';
+      oldFront.pause();
+    } else {
+      dropSnap();
+    }
+
+    back.onloadedmetadata = null;
+    back.onloadeddata = null;
+    back.onended = null;
+    back.onerror = null;
+    back.loop = !once;
+    back.dataset.anim = name;
+    back.classList.remove('front');
+    back.style.zIndex = '1';
+    back.pause();
+    back.src = urlFor(name, custom);
+
+    var revealed = false;
+    var durationMs = 10000;
+
+    function reveal() {
+      if (my !== token || revealed) return;
+      revealed = true;
+      back.style.zIndex = '2';
+      back.classList.add('front');
+      dropSnap();
+      front = idx;
+      call('onStarted', name, durationMs);
+    }
+
+    back.onloadedmetadata = function () {
+      if (my !== token) return;
+      if (isFinite(back.duration) && back.duration > 0) {
+        durationMs = Math.round(back.duration * 1000);
+      }
+    };
+    // loadeddata = 第一帧已经解码；再用 requestVideoFrameCallback 等到这一帧
+    // 真正上屏，才把新视频亮出来，避免露出解码/合成的中间态（灰白或黑）。
+    back.onloadeddata = function () {
+      if (my !== token) return;
+      var p = back.play();
+      if (p && p.catch) p.catch(function () {});
+      var shown = false;
+      function whenFrameReady() {
+        if (shown) return;
+        shown = true;
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () { reveal(); });
+        });
+      }
+      if (typeof back.requestVideoFrameCallback === 'function') {
+        back.requestVideoFrameCallback(function () { whenFrameReady(); });
+      }
+      // 兜底：个别机型不回调时按已解码状态放出来
+      setTimeout(function () {
+        if (my === token && !revealed && back.readyState >= 2) whenFrameReady();
+      }, 200);
+    };
+    back.onended = function () {
+      if (my !== token) return;
+      call('onEnded', name);
+    };
+    back.onerror = function () {
+      if (my !== token) return;
+      call('onError', name);
+    };
+    back.load();
+  };
+
+  window.petStop = function () {
+    token++;
+    currentName = null;
+    vids.forEach(function (v) {
+      v.onloadedmetadata = null;
+      v.onloadeddata = null;
+      v.onended = null;
+      v.onerror = null;
+      v.pause();
+      v.classList.remove('front');
+      v.removeAttribute('src');
+      v.load();
+    });
+    front = -1;
+    dropSnap();
+  };
+
+  // 切到聊天页时桌宠不可见：别让两路视频继续空转解码
+  window.petPause = function () {
+    paused = true;
+    vids.forEach(function (v) {
+      if (!v.paused) v.pause();
+    });
+  };
+
+  window.petResume = function () {
+    paused = false;
+    if (front >= 0) {
+      var v = vids[front];
+      var p = v.play();
+      if (p && p.catch) p.catch(function () {});
+    }
+  };
+})();
+</script>
+</body>
+</html>

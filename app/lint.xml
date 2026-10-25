@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- 桌宠的触摸全部由 OnTouchListener 处理（拖拽/缩放/点按），不需要无障碍点击语义 -->
+    <issue id="ClickableViewAccessibility" severity="ignore" />
+    <!-- 悬浮窗按真实像素定位与校准，读取屏幕尺寸是刻意为之 -->
+    <issue id="DiscouragedApi" severity="ignore" />
+    <!-- 每帧绘制渐变粒子是刻意的轻量开销，已在模拟器实测无掉帧 -->
+    <issue id="DrawAllocation" severity="ignore" />
+    <!-- player.html 依赖 JS 才能播放带 alpha 的 WebM -->
+    <issue id="SetJavaScriptEnabled" severity="ignore" />
+    <!-- 手机端界面只做竖屏 -->
+    <issue id="LockedOrientationActivity" severity="ignore" />
+    <!-- 图标为方形圆角图，交由启动器统一裁切 -->
+    <issue id="IconLauncherShape" severity="ignore" />
+</lint>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.WhalePet" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/whale_bg</item>
+        <item name="android:statusBarColor">@color/whale_bg</item>
+        <item name="android:navigationBarColor">@color/whale_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:colorAccent">@color/whale_accent</item>
+    </style>
+</resources>
